@@ -1,3 +1,5 @@
+logs/*
+temp_dir/*
 # History files
 .Rhistory
 .Rapp.history
