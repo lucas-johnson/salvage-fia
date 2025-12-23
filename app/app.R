@@ -7,10 +7,10 @@ library(leaflet.extras)
 source("helpers.R")
 library(shinyjs)
 library(FIESTA)
-library(promises)
-library(future)
 library(shinytail)
-future::plan('multisession')
+library(mirai)
+
+mirai::daemons(2)
 
 log_dir <- here::here("logs")
 
@@ -21,10 +21,6 @@ if (dir.exists(log_dir)) {
 }
 
 log_file_path <- file.path(log_dir, basename(tempfile(fileext = '.txt')))
-log_write <- file(log_file_path, "w")
-sink(log_write, append = FALSE, type = c("message"))
-
-# log_read <- file(log_file_path, 'r')
 
 confirm_modal <- function(download_details) {
     state_string <- paste0(download_details$states, collapse = ", ")
@@ -91,6 +87,7 @@ ui <- page_fluid(
                           card_body(htmlOutput("query_results")),
                       )
                   ),
+                  # TODO: put this in a better location/div
                   card(
                       card_header("Query Logs"),
                       card_body(shinytail::shinyTail("logs"))
@@ -110,9 +107,18 @@ server <- function(input, output, session) {
     query_polygon <- reactiveVal(NULL)
     query_states <- reactiveVal(NULL)
     
-    get_query_results <- ExtendedTask$new(function(query_states, query_polygon) {
-        promises::future_promise(
-            execute_query(query_states, query_polygon)
+    get_query_results <- ExtendedTask$new(function(query_states, query_polygon, log_file) {
+        mirai(
+            {
+                execute_query(query_states, query_polygon, log_file) 
+            }, 
+            execute_query = execute_query, 
+            download_db = download_db,
+            get_affected_plot_ids = get_affected_plot_ids,
+            get_affected_inventory = get_affected_inventory,
+            log_file = log_file,
+            query_polygon = query_polygon,
+            query_states = query_states
         )
     }) 
     
@@ -121,27 +127,6 @@ server <- function(input, output, session) {
     observe({
         shinytail::readStream(log_data, log_tail_process)
     })
-    
-    # all_data <- reactiveVal(value = NULL, label = "data")
-    
-    # pr <- shinytail::tailFile(log_file_path)
-    
-    # observe({
-        # readStream(all_data, pr)
-    # })
-    
-    # rv <- reactiveValues(textstream = c(""),
-    #                      timer = reactiveTimer(1000),
-    #                      started = FALSE)
-    
-    # observe({
-    #     rv$timer()
-    #     if (isolate(rv$started))
-    #         rv$textstream <- paste(readLines(log_file_path), collapse = "<br/>")
-    # })
-    # output$logs <- renderUI({
-    #     HTML(rv$textstream)
-    # })
     
     observe({
         if ((input$polygon_type == 'Draw' && 
@@ -275,35 +260,17 @@ server <- function(input, output, session) {
         
         removeModal()
         
-        # TODO: Can I pipe stdout from the FIESTA functions to the
-        #       waiter display?
-        
-        # waiter <- waiter::Waiter$new(
-        #     id = "query",
-        #     html = span("Downloading FIA DB data...")
-        # )
-        # waiter$show()
         shinyjs::disable("polygon_type")
         shinyjs::disable("run_query_btn")
-        # on.exit(waiter$hide())
         
-        
-        # output$log <- renderText({
-        #     paste(all_data(), collapse = "\n")
-        # })
-        
-        get_query_results$invoke(query_states(), query_polygon())
+        get_query_results$invoke(query_states(), query_polygon(), log_file_path)
         output$logs <- renderText({
             paste(log_data(), collapse = "\n")
         })
+        
+        # TODO: Figure out how to do something on the changing of
+        # get_query_result$result()
 
-        # db_file <- download_db(query_states())
-        # waiter$update(html = "Extracting effected plot IDs...")
-        # plots <- get_affected_plot_ids(db_file, query_polygon())
-        # waiter$update(html = "Estimating affected resources...")
-        # results <- get_affected_inventory(db_file, plots)
-        # shinyjs::enable("polygon_type")
-        # shinyjs::enable("run_query_btn")
     })
     
     output$query_results <- renderText({

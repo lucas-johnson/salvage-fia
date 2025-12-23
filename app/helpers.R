@@ -3,10 +3,15 @@ clean_dir <- function(clean_dir = here::here("temp_dir")) {
 }
 
 
-execute_query <- function(states, query_polygon) {
+execute_query <- function(states, query_polygon, log_file) {
+    log_connection <- file(log_file, 'w')
+    sink(file = file(log_file, 'w'), type = c('message'), append = FALSE)
     db_file <- download_db(states)
     plot_ids <- get_affected_plot_ids(db_file, query_polygon)
-    get_affected_inventory(db_file, plot_ids)
+    results <- get_affected_inventory(db_file, plot_ids)
+    sink()
+    close(log_connection)
+    return(results)
 }
 
 download_db <- function(states) {
@@ -18,7 +23,7 @@ download_db <- function(states) {
     filename <- file.path(write_dir, file)
     
     if (!file.exists(filename)) {
-        DBgetPlots(
+        FIESTA::DBgetPlots(
             states = states |> dplyr::pull(NAME),
             datsource = "datamart",
             eval = "FIA",
