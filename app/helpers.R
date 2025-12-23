@@ -3,6 +3,12 @@ clean_dir <- function(clean_dir = here::here("temp_dir")) {
 }
 
 
+execute_query <- function(states, query_polygon) {
+    db_file <- download_db(states)
+    plot_ids <- get_affected_plot_ids(db_file, query_polygon)
+    get_affected_inventory(db_file, plot_ids)
+}
+
 download_db <- function(states) {
     
     file <- glue::glue("{paste0(states$STUSPS, collapse = '_')}.db")
