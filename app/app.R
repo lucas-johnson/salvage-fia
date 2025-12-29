@@ -27,7 +27,7 @@ confirm_modal <- function(download_details) {
     
     modalDialog(
         title = "Confirm query",
-        glue::glue("Query will download {download_details$size} GB of data for {state_string}. Are you sure you want to run this query?"), # Use the passed argument in the UI
+        glue::glue("Query will download ~{download_details$size} GB of data for {state_string}. Are you sure you want to run this query?"), # Use the passed argument in the UI
         footer = tagList(
             actionButton("cancel_query", "Cancel"),
             actionButton("confirm_query", "Run", class = "btn btn-success")
@@ -85,13 +85,14 @@ ui <- page_fluid(
                       card(
                           card_header("Query Results"),
                           card_body(htmlOutput("query_results")),
+                          shinytail::shinyTail("logs")
                       )
                   ),
                   # TODO: put this in a better location/div
-                  card(
-                      card_header("Query Logs"),
-                      card_body(shinytail::shinyTail("logs"))
-                  )
+                  # card(
+                  #     card_header("Query Logs"),
+                  #     card_body(shinytail::shinyTail("logs"))
+                  # )
         ),
         nav_panel("Documentation", 
                   card(htmlOutput("docs")))
@@ -271,6 +272,19 @@ server <- function(input, output, session) {
         # TODO: Figure out how to do something on the changing of
         # get_query_result$result()
 
+    })
+    
+    observeEvent(get_query_results$status(), {
+        if (get_query_results$status() == 'success') {
+            shinyjs::enable("polygon_type")
+            shinyjs::enable("run_query_btn")
+            
+            # Remove logs from the UI
+            output$logs <- NULL
+            
+            # Clear out the logs from this download
+            log_data(NULL)
+        }
     })
     
     output$query_results <- renderText({
