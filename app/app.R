@@ -111,9 +111,9 @@ server <- function(input, output, session) {
     get_query_results <- ExtendedTask$new(function(query_states, query_polygon, log_file) {
         mirai(
             {
-                execute_query(query_states, query_polygon, log_file) 
-            }, 
-            execute_query = execute_query, 
+                execute_query(query_states, query_polygon, log_file)
+            },
+            execute_query = execute_query,
             download_db = download_db,
             get_affected_plot_ids = get_affected_plot_ids,
             get_affected_inventory = get_affected_inventory,
@@ -121,6 +121,7 @@ server <- function(input, output, session) {
             query_polygon = query_polygon,
             query_states = query_states
         )
+        # execute_query(query_states, query_polygon, log_file) 
     }) 
     
     log_data <- reactiveVal(value = NULL, label = 'log')
@@ -287,8 +288,17 @@ server <- function(input, output, session) {
         }
     })
     
-    output$query_results <- renderText({
-        render_query_results(get_query_results$result())
+    output$query_results <- renderUI({
+        results <- get_query_results$result()
+        return(
+            tagList(
+                tags$h4("Volume (net cubic feet)"),
+                shiny::HTML(render_query_results(results$vol)),
+                tags$hr(),
+                tags$h4("Basal Area (square feet)"),
+                shiny::HTML(render_query_results(results$ba))
+            )
+        )
     })
     
     output$docs <- renderUI({
