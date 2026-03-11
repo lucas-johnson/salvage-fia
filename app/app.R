@@ -38,7 +38,6 @@ confirm_modal <- function(download_details) {
 ui <- page_fluid(
     # App title ----
     useShinyjs(),
-    waiter::use_waiter(),
     title = "Salvage FIA",
     navset_card_underline(
         title = "Salvage FIA",
@@ -85,14 +84,11 @@ ui <- page_fluid(
                       card(
                           card_header("Query Results"),
                           card_body(htmlOutput("query_results")),
-                          shinytail::shinyTail("logs")
-                      )
+                          shinytail::shinyTail("logs"),
+                          downloadButton("download_data_btn", "Download Results CSV")
+                      ),
+                      
                   ),
-                  # TODO: put this in a better location/div
-                  # card(
-                  #     card_header("Query Logs"),
-                  #     card_body(shinytail::shinyTail("logs"))
-                  # )
         ),
         nav_panel("Documentation", 
                   card(htmlOutput("docs")))
@@ -103,10 +99,15 @@ ui <- page_fluid(
 # Define server logic required to draw a histogram ----
 server <- function(input, output, session) {
     
+    observe({
+        shinyjs::disable("download_data_btn")
+    })
+    
     draw_polygons <- reactiveVal(NULL)
     upload_files <- reactiveVal(NULL)
     query_polygon <- reactiveVal(NULL)
     query_states <- reactiveVal(NULL)
+    
     
     get_query_results <- ExtendedTask$new(function(query_states, query_polygon, log_file) {
         mirai(
@@ -264,6 +265,7 @@ server <- function(input, output, session) {
         
         shinyjs::disable("polygon_type")
         shinyjs::disable("run_query_btn")
+        shinyjs::disable("download_data_btn")
         
         get_query_results$invoke(query_states(), query_polygon(), log_file_path)
         output$logs <- renderText({
@@ -272,21 +274,80 @@ server <- function(input, output, session) {
         
         # TODO: Figure out how to do something on the changing of
         # get_query_result$result()
-
     })
     
     observeEvent(get_query_results$status(), {
         if (get_query_results$status() == 'success') {
             shinyjs::enable("polygon_type")
             shinyjs::enable("run_query_btn")
+            # shinyjs::enable("download_data_btn")
+            shinyjs::enable("download_data_btn")
+            output$download_data_btn <- downloadHandler(
+                filename = function() {
+                    paste('salvage-fia-results-', Sys.Date(), '.zip', sep='')
+                },
+                content = function(file) {
+                    
+                    temp_dir <- tempdir()
+                    
+                    results <- get_query_results$result()
+                    
+                    vol_fortyp_file <- file.path(temp_dir, "volume_fortypgrp.csv")
+                    vol_stdszcd_file <- file.path(temp_dir, "volume_szclass.csv")
+                    
+                    vol_fortypgrp_tab <- pretty_results_table(
+                        results$vol$raw$rowest, 
+                        results$vol$raw$totest, 
+                        `Forest-type group`
+                    )
+                    vol_stdszcd_tab <- pretty_results_table(
+                        results$vol$raw$colest, 
+                        results$vol$raw$totest, 
+                        `Stand-size class`
+                    )
+                    
+                    write.csv(vol_stdszcd_tab, vol_stdszcd_file, row.names = FALSE)
+                    write.csv(vol_fortypgrp_tab, vol_fortyp_file, row.names = FALSE)
+                    
+                    ba_fortyp_file <- file.path(temp_dir, "ba_fortypgrp.csv")
+                    ba_stdszcd_file <- file.path(temp_dir, "ba_szclass.csv")
+                    
+                    ba_fortypgrp_tab <- pretty_results_table(
+                        results$ba$raw$rowest, 
+                        results$ba$raw$totest, 
+                        `Forest-type group`
+                    )
+                    ba_stdszcd_tab <- pretty_results_table(
+                        results$ba$raw$colest, 
+                        results$ba$raw$totest, 
+                        `Stand-size class`
+                    )
+                    
+                    write.csv(ba_stdszcd_tab, ba_stdszcd_file, row.names = FALSE)
+                    write.csv(ba_fortypgrp_tab, ba_fortyp_file, row.names = FALSE)
+                    
+                    zip(
+                        zipfile = file,
+                        files = c(ba_fortyp_file, ba_stdszcd_file, vol_stdszcd_file, vol_fortyp_file),
+                        flags = "-j"  # junk the path, store just filenames
+                    )
+                    
+                    
+                }
+            )
+            
             
             # Remove logs from the UI
             output$logs <- NULL
             
             # Clear out the logs from this download
             log_data(NULL)
+            
+        } else {
+            shinyjs::disable("download_data_btn")
         }
     })
+    
     
     output$query_results <- renderUI({
         results <- get_query_results$result()
