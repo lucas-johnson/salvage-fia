@@ -147,6 +147,11 @@ server <- function(input, output, session) {
         quiet = TRUE
     )
     
+    islands <- sf::st_read(here::here("data/islands/islands.gpkg"), 
+                           quiet = TRUE)
+    
+    states <- rbind(states |> dplyr::select(NAME, STUSPS), islands |> dplyr::rename(geometry = geom))
+    
     output$map <- renderLeaflet({
         leaflet() %>% 
             setView(lng = -98.5795, lat = 39.8283, zoom = 4) |> # center the map in USA
@@ -290,6 +295,7 @@ server <- function(input, output, session) {
     
     output$query_results <- renderUI({
         results <- get_query_results$result()
+        browser()
         return(
             tagList(
                 tags$h4("Volume (net cubic feet)"),

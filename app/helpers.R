@@ -109,11 +109,9 @@ get_affected_inventory <- function(db_file, plot_ids) {
 }
 
 pretty_results_table <- function(group_tab, total_tab, group_col) {
-    
     dplyr::bind_rows(
         group_tab,
-        total_tab |> 
-            dplyr::select(-TOTAL) |>
+        total_tab |>
             dplyr::mutate({{group_col}} := 'Total')
     ) |> 
         dplyr::select({{group_col}}, est, NBRPLT.gt0, est.se, pse) |> 
@@ -148,12 +146,18 @@ kablify_results_tables <- function(table) {
 }
 
 render_query_results <- function(results) {
+    if (is.null(results$raw$totest)) {
+        totest <- results$raw$rowest
+    } else {
+        totest <- results$raw$totest |> 
+            dplyr::select(-TOTAL) 
+    }
     fortypgrp_tab <- pretty_results_table(results$raw$rowest, 
-                                          results$raw$totest, 
+                                          totest, 
                                           `Forest-type group`) |> 
         kablify_results_tables()
     stdszcd_tab <- pretty_results_table(results$raw$colest, 
-                                        results$raw$totest, 
+                                        totest,
                                         `Stand-size class`) |> 
         kablify_results_tables()
     return(paste(fortypgrp_tab, stdszcd_tab, sep = "\n"))
