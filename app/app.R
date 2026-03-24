@@ -81,6 +81,12 @@ ui <- page_fluid(
                   ),
                   card(
                       id = "query",
+                      selectInput(
+                          "estimation_group",
+                          "Estimate",
+                          c("Area", "Tree count", "Volume", "AGB / Carbon"),
+                          selected = "Area"
+                      ),
                       actionButton("run_query_btn", "Run Query"),
                       card(
                           card_header("Query Results"),
@@ -119,9 +125,9 @@ server <- function(input, output, session) {
             get_affected_inventory = get_affected_inventory,
             log_file = log_file,
             query_polygon = query_polygon,
-            query_states = query_states
+            query_states = query_states,
+            get_fiesta_est = get_fiesta_est
         )
-        # execute_query(query_states, query_polygon, log_file) 
     }) 
     
     log_data <- reactiveVal(value = NULL, label = 'log')
@@ -289,16 +295,9 @@ server <- function(input, output, session) {
     })
     
     output$query_results <- renderUI({
-        results <- get_query_results$result()
-        return(
-            tagList(
-                tags$h4("Volume (net cubic feet)"),
-                shiny::HTML(render_query_results(results$vol)),
-                tags$hr(),
-                tags$h4("Basal Area (square feet)"),
-                shiny::HTML(render_query_results(results$ba))
-            )
-        )
+        results <- render_query_results(get_query_results$result())
+        results <- map_estimation_group_to_result(input$estimation_group, results)
+        build_html(input$estimation_group, results)
     })
     
     output$docs <- renderUI({

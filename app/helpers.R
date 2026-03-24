@@ -57,6 +57,51 @@ get_affected_plot_ids <- function(db_file, query_polygon) {
     return(coords$pltids)
 }
 
+get_fiesta_est <- function(pop_data, estvar, plot_ids, mode, landarea = "FOREST", sumunits = TRUE, 
+                           estvar.filter = "STATUSCD == 1", returntitle = TRUE, 
+                           rowvar = NULL, table_opts = NULL) {
+    if (is.null(table_opts)) {
+        table_opts <- FIESTAutils::table_options(row.FIAname = TRUE)
+    }
+    
+    args = list(GBpopdat = pop_data, 
+                pltids = plot_ids$PLT_CN, 
+                landarea = landarea, 
+                sumunits = sumunits, 
+                returntitle = returntitle, 
+                rowvar = rowvar, 
+                table_opts = table_opts)
+    
+    if (mode == 'area') {
+        estvar <- "Area (acres)"
+        result <- tryCatch(
+            {
+                do.call(FIESTA::modGBarea, args)
+            }, error = function(cond) {
+                message(conditionMessage(cond))
+                return(list())
+            }
+        )
+        
+    } else if(mode == 'tree') {
+        result <- tryCatch(
+            {
+                do.call(
+                    FIESTA::modGBtree, 
+                    c(list(estvar = estvar, estvar.filter = estvar.filter), args)
+                )
+            }, error = function(cond) {
+                message(conditionMessage(cond))
+                return(list())
+            }
+        )
+    } else {
+        stop("mode not supported! Use 'tree' or 'area'.")
+    }
+    
+    return(c(result, list(estvar = estvar)))
+}
+    
 get_affected_inventory <- function(db_file, plot_ids) {
     conn <- DBI::dbConnect(RSQLite::SQLite(), db_file)
     # unit_opts = FIESTA::unit_options(unitvar2 = "EVALID")
@@ -75,62 +120,104 @@ get_affected_inventory <- function(db_file, plot_ids) {
                                                   getwtvar = "P1POINTCNT")
     )
     
-    volcfnet <- FIESTA::modGBtree(GBpopdat = pop_data, 
-                                  landarea = "FOREST",
-                                  sumunits = TRUE, # combines estimation units
-                                  estvar = "VOLCFNET",
-                                  estvar.filter = "STATUSCD == 1", # live trees
-                                  returntitle = TRUE,
-                                  rowvar = 'FORTYPGRPCD',
-                                  colvar = 'STDSZCD', 
-                                  table_opts = FIESTAutils::table_options(
-                                      row.FIAname = TRUE, 
-                                      col.FIAname = TRUE
-                                  ), 
-                                  pltids = plot_ids$PLT_CN)
+    forest_area <- list(
+        c(
+            get_fiesta_est(pop_data, NULL, plot_ids, 'area', 
+                           landarea = "ALL", rowvar = 'COND_STATUS_CD'),
+            list(filter = 'None', grouping = 'COND_STATUS_CD')
+        )
+    )
+    tree_numbers <- list(
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree',
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 5', 
+                           rowvar = 'SPGRPCD'),
+            list(filter = "live; >= 5 in DBH", grouping = 'Species group')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1', 
+                           rowvar = 'SPGRPCD'),
+            list(filter = 'live; >= 1 in DBH', grouping = 'Species group')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 0', 
+                           rowvar = 'SPGRPCD'),
+            list(filter = 'dead; >= 1 in DBH', grouping = 'Species group')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree',
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 5', 
+                           rowvar = 'OWNGRPCD'),
+            list(filter = "live; >= 5 in DBH", grouping = 'Owner group')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1', 
+                           rowvar = 'OWNGRPCD'),
+            list(filter = 'live; >= 1 in DBH', grouping = 'Owner group')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'TPA_UNADJ', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 0', 
+                           rowvar = 'OWNGRPCD'),
+            list(filter = 'dead; >= 1 in DBH', grouping = 'Owner group')
+        )
+    )
     
     
-    balive <- FIESTA::modGBtree(GBpopdat = pop_data, 
-                                landarea = "FOREST",
-                                sumunits = TRUE, # combines estimation units
-                                estvar = "BA",
-                                estvar.filter = "STATUSCD == 1", # live trees
-                                returntitle = TRUE, 
-                                rowvar = 'FORTYPGRPCD',
-                                colvar = 'STDSZCD', 
-                                table_opts = FIESTAutils::table_options(
-                                    row.FIAname = TRUE, 
-                                    col.FIAname = TRUE
-                                ),
-                                pltids = plot_ids$PLT_CN)
+    # Total stem sound volume wood and bark: VOLTSSND
+    # Sound bole wood volume: VOLCFSND
+    volume <- list(
+        c(
+            get_fiesta_est(pop_data, 'VOLTSSND', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 5',
+                           rowvar = 'SPCD'),
+            list(filter = 'live; >= 5 in DBH', grouping = 'Species')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'VOLTSSND', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 0 & DIA >= 5',
+                           rowvar = 'SPCD'),
+            list(filter = 'dead; >= 5 in DBH', grouping = 'Species')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'VOLCFSND', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 5',
+                           rowvar = 'SPCD'),
+            list(filter = 'live; >= 5 in DBH', grouping = 'Species')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'VOLCFSND', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 0 & DIA >= 5',
+                           rowvar = 'SPCD'),
+            list(filter = 'dead; >= 5 in DBH', grouping = 'Species')
+        )
+    )
     
+    agbc <- list(
+        c(
+            get_fiesta_est(pop_data, 'DRYBIO_AG', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 1'),
+            list(filter = 'live; >= 1 in DBH', grouping = '')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'CARBON_AG', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 1 & DIA >= 1'),
+            list(filter = 'live; >= 1 in DBH', grouping = '')
+        ),
+        c(
+            get_fiesta_est(pop_data, 'CARBON_AG', plot_ids, 'tree', 
+                           estvar.filter = 'STATUSCD == 0 & DIA >= 5'),
+            list(filter = 'dead; >= 5 in DBH', grouping = '')
+        )
+    )
     DBI::dbDisconnect(conn)
-    return(list(vol = volcfnet, ba = balive))   
+    return(list(area = forest_area, tree_ct = tree_numbers, 
+                volume = volume, agbc = agbc))   
 }
 
-pretty_results_table <- function(group_tab, total_tab, group_col) {
-    
-    dplyr::bind_rows(
-        group_tab,
-        total_tab |> 
-            dplyr::select(-TOTAL) |>
-            dplyr::mutate({{group_col}} := 'Total')
-    ) |> 
-        dplyr::select({{group_col}}, est, NBRPLT.gt0, est.se, pse) |> 
-        dplyr::rename(Estimate = est, `n Plots` = NBRPLT.gt0,  SE = est.se, `SE (%)` = pse) |> 
-        dplyr::mutate(
-            dplyr::across(
-                dplyr::where(is.numeric), 
-                ~ (function(x) {
-                    pretty_x <- prettyNum(round(.x, 2), big.mark = ",", scientific = FALSE)
-                    return(
-                        ifelse(pretty_x == "NA", "--", pretty_x)
-                    )
-                })(.x)
-            )
-        ) |>
-        dplyr::mutate({{group_col}} := gsub("group ", "", {{group_col}}))
-}
 
 kablify_results_tables <- function(table) {
     table |> 
@@ -147,14 +234,81 @@ kablify_results_tables <- function(table) {
         )
 }
 
-render_query_results <- function(results) {
-    fortypgrp_tab <- pretty_results_table(results$raw$rowest, 
-                                          results$raw$totest, 
-                                          `Forest-type group`) |> 
-        kablify_results_tables()
-    stdszcd_tab <- pretty_results_table(results$raw$colest, 
-                                        results$raw$totest, 
-                                        `Stand-size class`) |> 
-        kablify_results_tables()
-    return(paste(fortypgrp_tab, stdszcd_tab, sep = "\n"))
+render_query_results <- function(group_results) {
+    group_names <- names(group_results)
+    group_results <- lapply(
+        group_results, 
+        \(result_group) {
+            lapply(result_group, \(result) {
+                if (!"raw" %in% names(result)) {
+                    # TODO: something?
+                } else {
+                    if (result$grouping == '') {
+                        group_col <- "Group"
+                        result$display_est <- result$raw$totest |>
+                            dplyr::select(-TOTAL) |> 
+                            dplyr::mutate(Group = "Total")
+                    
+                    } else {
+                        group_col <- names(result$raw$rowest) |> head(1)
+                        result$display_est <- dplyr::bind_rows(
+                            result$raw$rowest |> 
+                                dplyr::arrange(-est), 
+                            result$raw$totest |>
+                                dplyr::select(-TOTAL) |>
+                                dplyr::mutate({{group_col}} := 'Total')
+                        )
+                    }
+                    result$display_est <- result$display_est |> 
+                        dplyr::select({{group_col}}, est, NBRPLT.gt0, est.se, pse) |> 
+                        dplyr::rename(Estimate = est, `n Plots` = NBRPLT.gt0,  SE = est.se, `SE (%)` = pse) |> 
+                        dplyr::mutate(
+                            dplyr::across(
+                                dplyr::where(is.numeric), 
+                                ~ (function(x) {
+                                    pretty_x <- prettyNum(round(.x, 2), big.mark = ",", scientific = FALSE)
+                                    return(
+                                        ifelse(pretty_x == "NA", "--", pretty_x)
+                                    )
+                                })(.x)
+                            )
+                        ) |>
+                        kablify_results_tables()
+                    return(result)
+                }
+  
+            })
+        }
+    )
+    
+    names(group_results) <- group_names
+    
+    return(group_results)
+}
+
+map_estimation_group_to_result <- function(input, results) {
+    result <- switch(
+        input, 
+        "Area" = results$area,
+        "Tree count" = results$tree_ct,
+        "Volume" = results$volume,
+        "AGB / Carbon" = results$agbc
+    )
+    return(result)
+}
+
+build_html <- function(title, results) {
+    display_tags <- lapply(results, \(r) {
+        list(
+            tags$span(glue::glue("Estimation variable: {r$estvar}")),
+            tags$span(glue::glue("Filter: {r$filter}")),
+            shiny::HTML(r$display_est)
+        )
+    })
+    
+    display_tags <- c(
+        list(tags$h4(title)),
+        display_tags
+    )
+    return(tagList(display_tags))
 }
