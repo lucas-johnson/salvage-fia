@@ -220,9 +220,10 @@ get_affected_inventory <- function(db_file, plot_ids) {
 
 
 kablify_results_tables <- function(table) {
+    
     table |> 
         kableExtra::kbl(booktabs = TRUE, align = c("l", rep("r", 4)),
-        linesep = "\\addlinespace", format = 'html') |>
+                        linesep = "\\addlinespace", format = 'html') |>
         kableExtra::kable_styling(position = 'center') |> 
         kableExtra::row_spec(
             row = nrow(table),
@@ -232,6 +233,7 @@ kablify_results_tables <- function(table) {
             row = nrow(table) - 1,
             hline_after = TRUE 
         )
+
 }
 
 render_query_results <- function(group_results) {
@@ -241,7 +243,7 @@ render_query_results <- function(group_results) {
         \(result_group) {
             lapply(result_group, \(result) {
                 if (!"raw" %in% names(result)) {
-                    # TODO: something?
+                    return(result)
                 } else {
                     if (result$grouping == '') {
                         group_col <- "Group"
@@ -272,8 +274,7 @@ render_query_results <- function(group_results) {
                                     )
                                 })(.x)
                             )
-                        ) |>
-                        kablify_results_tables()
+                        )
                     return(result)
                 }
   
@@ -299,11 +300,18 @@ map_estimation_group_to_result <- function(input, results) {
 
 build_html <- function(title, results) {
     display_tags <- lapply(results, \(r) {
-        list(
+        
+        r_tags <- list(
             tags$span(glue::glue("Estimation variable: {r$estvar}")),
-            tags$span(glue::glue("Filter: {r$filter}")),
-            shiny::HTML(r$display_est)
+            tags$span(glue::glue("Filter: {r$filter}"))
         )
+        if (!is.null(r$display_est)) {
+            r_tags <- c(r_tags, list(shiny::HTML(kablify_results_tables(r$display_est))))
+        } else {
+            r_tags <- c(r_tags, list(tags$strong("No Estimate")))
+        }
+        return(r_tags)
+        
     })
     
     display_tags <- c(
@@ -311,4 +319,34 @@ build_html <- function(title, results) {
         display_tags
     )
     return(tagList(display_tags))
+}
+
+download_csvs <- function(file, results) {
+    
+    temp_dir <- tempdir()
+    
+    results <- render_query_results(results)
+    
+    filenames <- lapply(
+        results, 
+        \(result_group) {
+            lapply(result_group, \(table) {
+                if (!is.null(table$display_est)) {
+                    group_string <- ifelse(table$grouping == '', '', paste0('by_', gsub(" ", "-", table$grouping)))
+                    filter_string <- ifelse(table$filter == '', 'no-filter', gsub(" ", "", table$filter))
+                    estvar <- ifelse(table$estvar == 'Area (acres)', 'AREA', table$estvar)
+                    est_filename <- file.path(
+                        temp_dir,
+                        glue::glue("{estvar}_by_{group_string}_{filter_string}.csv")
+                    )
+                    write.csv(table$display_est, est_filename, row.names = FALSE)
+                    return(est_filename)
+                }
+            }) |> unlist()
+                
+        }
+    ) |> unlist()
+    
+    zip(zipfile = file, files = filenames, flags = "-j")
+    
 }

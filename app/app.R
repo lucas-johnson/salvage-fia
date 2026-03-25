@@ -80,24 +80,24 @@ ui <- page_fluid(
                   ),
                   card(
                       id = "query",
-                      selectInput(
-                          "estimation_group",
-                          "Estimate",
-                          c("Area", "Tree count", "Volume", "AGB / Carbon"),
-                          selected = "Area"
-                      ),
                       actionButton("run_query_btn", "Run Query"),
                       card(
                           card_header("Query Results"),
+                          card(
+                              radioButtons(
+                                  inputId = "estimation_group",
+                                  label = "Estimate group",
+                                  choices = c("Area", "Tree count", "Volume", "AGB / Carbon"),
+                                  selected = "Area"
+                              ),
+                          ),
                           card_body(htmlOutput("query_results")),
                           shinytail::shinyTail("logs"),
-                          downloadButton("download_data_btn", "Download Results CSV")
+                          downloadButton("download_data_btn", "Download Results")
                       ),
                       
                   ),
-        ),
-        nav_panel("Documentation", 
-                  card(htmlOutput("docs")))
+        )
     )
     
 )
@@ -107,6 +107,7 @@ server <- function(input, output, session) {
     
     observe({
         shinyjs::disable("download_data_btn")
+        shinyjs::disable("estimation_group")
     })
     
     draw_polygons <- reactiveVal(NULL)
@@ -272,6 +273,7 @@ server <- function(input, output, session) {
         shinyjs::disable("polygon_type")
         shinyjs::disable("run_query_btn")
         shinyjs::disable("download_data_btn")
+        shinyjs::disable("estimation_group")
         
         get_query_results$invoke(query_states(), query_polygon(), log_file_path)
         output$logs <- renderText({
@@ -286,6 +288,7 @@ server <- function(input, output, session) {
         if (get_query_results$status() == 'success') {
             shinyjs::enable("polygon_type")
             shinyjs::enable("run_query_btn")
+            shinyjs::enable("estimation_group")
             # shinyjs::enable("download_data_btn")
             shinyjs::enable("download_data_btn")
             output$download_data_btn <- downloadHandler(
@@ -293,52 +296,7 @@ server <- function(input, output, session) {
                     paste('salvage-fia-results-', Sys.Date(), '.zip', sep='')
                 },
                 content = function(file) {
-                    
-                    temp_dir <- tempdir()
-                    
-                    results <- get_query_results$result()
-                    
-                    vol_fortyp_file <- file.path(temp_dir, "volume_fortypgrp.csv")
-                    vol_stdszcd_file <- file.path(temp_dir, "volume_szclass.csv")
-                    
-                    vol_fortypgrp_tab <- pretty_results_table(
-                        results$vol$raw$rowest, 
-                        results$vol$raw$totest, 
-                        `Forest-type group`
-                    )
-                    vol_stdszcd_tab <- pretty_results_table(
-                        results$vol$raw$colest, 
-                        results$vol$raw$totest, 
-                        `Stand-size class`
-                    )
-                    
-                    write.csv(vol_stdszcd_tab, vol_stdszcd_file, row.names = FALSE)
-                    write.csv(vol_fortypgrp_tab, vol_fortyp_file, row.names = FALSE)
-                    
-                    ba_fortyp_file <- file.path(temp_dir, "ba_fortypgrp.csv")
-                    ba_stdszcd_file <- file.path(temp_dir, "ba_szclass.csv")
-                    
-                    ba_fortypgrp_tab <- pretty_results_table(
-                        results$ba$raw$rowest, 
-                        results$ba$raw$totest, 
-                        `Forest-type group`
-                    )
-                    ba_stdszcd_tab <- pretty_results_table(
-                        results$ba$raw$colest, 
-                        results$ba$raw$totest, 
-                        `Stand-size class`
-                    )
-                    
-                    write.csv(ba_stdszcd_tab, ba_stdszcd_file, row.names = FALSE)
-                    write.csv(ba_fortypgrp_tab, ba_fortyp_file, row.names = FALSE)
-                    
-                    zip(
-                        zipfile = file,
-                        files = c(ba_fortyp_file, ba_stdszcd_file, vol_stdszcd_file, vol_fortyp_file),
-                        flags = "-j"  # junk the path, store just filenames
-                    )
-                    
-                    
+                    download_csvs(file, get_query_results$result())
                 }
             )
             
