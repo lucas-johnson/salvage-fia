@@ -41,7 +41,7 @@ ui <- page_fluid(
     title = "Salvage FIA",
     navset_card_underline(
         title = "Salvage FIA",
-        nav_panel("Application", 
+        nav_panel("", 
                   card(
                       id = "inputs",
                       full_screen = TRUE,
