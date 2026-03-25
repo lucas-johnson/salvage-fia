@@ -332,14 +332,20 @@ download_csvs <- function(file, results) {
         \(result_group) {
             lapply(result_group, \(table) {
                 if (!is.null(table$display_est)) {
+                    
                     group_string <- ifelse(table$grouping == '', '', paste0('by_', gsub(" ", "-", table$grouping)))
                     filter_string <- ifelse(table$filter == '', 'no-filter', gsub(" ", "", table$filter))
                     estvar <- ifelse(table$estvar == 'Area (acres)', 'AREA', table$estvar)
                     est_filename <- file.path(
                         temp_dir,
-                        glue::glue("{estvar}_by_{group_string}_{filter_string}.csv")
+                        glue::glue("{estvar}_{group_string}_{filter_string}.csv")
                     )
-                    write.csv(table$display_est, est_filename, row.names = FALSE)
+                    write.csv(
+                        table$display_est |> 
+                            dplyr::rename(SE_pct = `SE (%)`), 
+                        est_filename, 
+                        row.names = FALSE
+                    )
                     return(est_filename)
                 }
             }) |> unlist()
