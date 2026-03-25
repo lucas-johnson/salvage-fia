@@ -36,4 +36,6 @@ Within your Rstudio console run `shiny::runApp("app")`. A window will open with 
 
 ## Estimation engine
 
-FIESTA...
+All estimates are made with the [FIESTA R package Greenbook Module](https://usdaforestservice.github.io/FIESTA/articles/FIESTA_tutorial_GB.html). The key difference between a standard Greenbook estimate and estimates made via this app is that we are using an area of interest (polygon boundary) as a spatial filter for plots included in the estimate. Notably, only the plots within the boundaries are used to estimate stratum means, however, the stratum weights remain unchanged and will correspond to that plots original estimation unit (e.g. a county). This will likely introduce a bias into the estimate that scales with the size of the difference between the area of interest forest conditions and the original stratum's conidtions. 
+
+The data powering these estimates comes directly from the Datamart, and only includes inventories from the most recently published evaluation period. Given that the data comes from the datamart, it is worth noting that the our spatial filter uses the publicly available plot coordinates which are fuzzed and swapped at random. 
